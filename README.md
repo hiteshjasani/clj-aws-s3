@@ -1,14 +1,16 @@
 # clj-aws-s3
 
-A Clojure library designed to ... well, that part is up to you.
+A simple Clojure library for interacting with AWS S3.
+
+(still in development)
 
 ## Usage
 
-FIXME
+tbd
 
 ## License
 
-Copyright © 2017 FIXME
+Copyright © 2017 Hitesh Jasani
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
