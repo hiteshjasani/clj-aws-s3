@@ -200,7 +200,7 @@
         (when-not async?
           (.waitForCompletion job))))))
 
-(defn get
+(defn get-with-meta
   "Get content from S3 as a string"
   [^TransferManager txfr-mgr
    ^String bucket-name
@@ -212,7 +212,21 @@
         arr-bytes (byte-array size)
         istream (.getObjectContent obj)]
     (.read istream arr-bytes 0 size)
-    (String. arr-bytes)))
+    {:meta metadata :obj (String. arr-bytes)}))
+
+(defn get
+  "Get content from S3 as a string"
+  [^TransferManager txfr-mgr
+   ^String bucket-name
+   ^String object-key]
+  (:obj (get-with-meta txfr-mgr bucket-name object-key)))
+
+(defn delete!
+  "Delete object from S3"
+  [txfr-mgr-or-client
+   ^String bucket-name
+   ^String object-key]
+  (.deleteObject (get-client txfr-mgr-or-client) bucket-name object-key))
 
 (defn startup
   "Create a TransferManager instance which should be kept and reused in the application.
