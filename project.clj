@@ -4,5 +4,5 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [com.amazonaws/aws-java-sdk-s3 "1.11.96"]
+                 [com.amazonaws/aws-java-sdk-s3 "1.11.119"]
                  ])
