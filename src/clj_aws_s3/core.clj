@@ -283,7 +283,6 @@
        (TransferManager.))))
 
 (defn shutdown
-  "Forceful shutdown of the TransferManager instance.  This will NOT wait for transfers to be completed.
-  "
+  "Forceful shutdown of the TransferManager instance.  This will NOT wait for transfers to be completed."
   [^TransferManager txfr-mgr]
-  (.shutdown txfr-mgr))
+  (.shutdownNow txfr-mgr))
