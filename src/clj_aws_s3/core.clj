@@ -1,4 +1,19 @@
 (ns clj-aws-s3.core
+  "Core api for working with S3
+
+   Usage:
+
+     (def txfrmgr (startup \"my-access-key\" \"my-secret-key\"))
+
+     (ls txfrmgr \"mybucket\")
+     (put! \"hello world\" txmgr \"mybucket\" \"hello.txt\" {} false)
+     (get-obj txfrmgr \"mybucket\" \"hello.txt\")
+     (get-obj-with-meta txfrmgr \"mybucket\" \"hello.txt\")
+     (copy! txfrmgr \"mybucket\" \"hello.txt\" \"mybucket\" \"goodbye.txt\")
+     (delete! txfrmgr \"mybucket\" \"goodbye.txt\")
+
+     (shutdown txfrmgr)
+  "
   (:import
    (com.amazonaws.auth AWSCredentials BasicAWSCredentials)
    (com.amazonaws.services.s3 AmazonS3Client)
@@ -70,14 +85,13 @@
   S3ClientProtocol
   (get-client [obj] obj))
 
-
 (defn get-object-listing
   "
    Return: ObjectListing
   "
   ([txfr-mgr-or-client
     ^String bucket-name]
-   (ls txfr-mgr-or-client bucket-name nil))
+   (get-object-listing txfr-mgr-or-client bucket-name nil))
   ([txfr-mgr-or-client
     ^String bucket-name
     ^String object-key-prefix]
@@ -86,6 +100,27 @@
           (if (seq object-key-prefix)
             (.listObjects client bucket-name object-key-prefix)
             (.listObjects client bucket-name)))))))
+
+(defn ls
+  "Quick listing of objects in a bucket.  Returns the metadata on objects available from S3ObjectSummary as
+   as hash of key/value pairs.
+
+   Runtime:  1 query to S3
+
+   See:
+     * http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/s3/model/S3ObjectSummary.html
+  "
+  ([txfr-mgr-or-client
+    ^String bucket-name]
+   (ls txfr-mgr-or-client bucket-name nil))
+  ([txfr-mgr-or-client
+    ^String bucket-name
+    ^String object-key-prefix]
+   (->> (if (seq object-key-prefix)
+          (get-object-listing txfr-mgr-or-client bucket-name object-key-prefix)
+          (get-object-listing txfr-mgr-or-client bucket-name))
+        .getObjectSummaries
+        (mapv as-key-values))))
 
 (defn get-object
   "Return: S3Object"
@@ -103,27 +138,6 @@
   (-> (get-client txfr-mgr-or-client)
       (.getObjectMetadata bucket-name object-key)))
 
-(defn ls
-  "Quick listing of objects in a bucket.  Returns the metadata on objects available from S3ObjectSummary as
-   as hash of key/value pairs.
-
-   Runtime:  1 query to S3
-
-   See:
-     * http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/s3/model/S3ObjectSummary.html
-  "
-  ([txfr-mgr-or-client
-    ^String bucket-name]
-   (ls-quick txfr-mgr-or-client bucket-name nil))
-  ([txfr-mgr-or-client
-    ^String bucket-name
-    ^String object-key-prefix]
-   (->> (if (seq object-key-prefix)
-          (get-object-listing txfr-mgr-or-client bucket-name object-key-prefix)
-          (get-object-listing txfr-mgr-or-client bucket-name))
-        .getObjectSummaries
-        (mapv as-key-values))))
-
 (defn ls-long
   "Detailed metadata listing of objects in a bucket.  Returns the metadata on objects available from S3ObjectSummary
    and ObjectMetadata.
@@ -136,7 +150,7 @@
   "
   ([txfr-mgr-or-client
     ^String bucket-name]
-   (ls-quick txfr-mgr-or-client bucket-name nil))
+   (ls-long txfr-mgr-or-client bucket-name nil))
   ([txfr-mgr-or-client
     ^String bucket-name
     ^String object-key-prefix]
@@ -152,7 +166,7 @@
         )))
 
 
-(defn copy
+(defn copy!
   "Copy an object from one bucket/key to another bucket/key entirely on S3
 
    Runtime:  1 request to S3
@@ -175,37 +189,39 @@
 
 (defprotocol PutProtocol
   "Enable PUT (uploading/assigning content to a key) in S3"
-  (put [content txfr-mgr bucket-name object-key metadata async?]))
-
-(extend-type String
-  PutProtocol
-  (put [content txfr-mgr bucket-name object-key metadata async?]
-    (let [istream (ByteArrayInputStream. (.getBytes content StandardCharsets/UTF_8))
-          md (ObjectMetadata.)]
-      (.setContentType md (or (:content-type metadata) "text/plain"))
-      (.setContentLength md (count content))
-      (let [job (.upload txfr-mgr bucket-name object-key istream md)]
-        (when-not async?
-          (.waitForCompletion job))))))
+  (put! [content txfr-mgr bucket-name object-key metadata async?]))
 
 (extend-type InputStream
   PutProtocol
-  (put [content txfr-mgr bucket-name object-key metadata async?]
+  (put! [content txfr-mgr bucket-name object-key metadata async?]
     (let [istream content
           md (ObjectMetadata.)]
       (.setContentType md (or (:content-type metadata) "text/plain"))
-      (if (:content-length metadata)
+      (when (:content-length metadata)
         (.setContentLength md (:content-length metadata)))
       (let [job (.upload txfr-mgr bucket-name object-key istream md)]
         (when-not async?
           (.waitForCompletion job))))))
 
-(defn get-with-meta
-  "Get content from S3 as a string"
+(extend-type String
+  PutProtocol
+  (put! [content txfr-mgr bucket-name object-key metadata async?]
+    (let [istream (ByteArrayInputStream. (.getBytes content StandardCharsets/UTF_8))
+          metadata (merge {:content-length (count content)} metadata)]
+      (put! istream txfr-mgr bucket-name object-key metadata async?))))
+
+(defn get-obj-with-meta
+  "Get content from S3 as a string
+
+   throws AmazonS3Exception
+
+     AmazonS3Exception The specified key does not exist. (Service: Amazon S3; Status Code: 404;
+                                                          Error Code: NoSuchKey; Request ID: AD973483D47FA781)
+     com.amazonaws.http.AmazonHttpClient$RequestExecutor.handleErrorResponse (AmazonHttpClient.java:1588)
+  "
   [^TransferManager txfr-mgr
    ^String bucket-name
-   ^String object-key
-   ]
+   ^String object-key]
   (let [obj ^S3Object (.getObject (get-client txfr-mgr) bucket-name object-key)
         metadata (-> obj .getObjectMetadata as-key-values)
         size (:content-length metadata)
@@ -214,12 +230,19 @@
     (.read istream arr-bytes 0 size)
     {:meta metadata :obj (String. arr-bytes)}))
 
-(defn get
-  "Get content from S3 as a string"
+(defn get-obj
+  "Get content from S3 as a string
+
+   throws AmazonS3Exception
+
+     AmazonS3Exception The specified key does not exist. (Service: Amazon S3; Status Code: 404;
+                                                          Error Code: NoSuchKey; Request ID: AD973483D47FA781)
+     com.amazonaws.http.AmazonHttpClient$RequestExecutor.handleErrorResponse (AmazonHttpClient.java:1588)
+  "
   [^TransferManager txfr-mgr
    ^String bucket-name
    ^String object-key]
-  (:obj (get-with-meta txfr-mgr bucket-name object-key)))
+  (:obj (get-obj-with-meta txfr-mgr bucket-name object-key)))
 
 (defn delete!
   "Delete object from S3"
