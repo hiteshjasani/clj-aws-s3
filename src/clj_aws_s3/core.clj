@@ -15,10 +15,12 @@
      (shutdown txfrmgr)
   "
   (:import
-   (com.amazonaws.auth AWSCredentials BasicAWSCredentials)
-   (com.amazonaws.services.s3 AmazonS3Client)
-   (com.amazonaws.services.s3.model ObjectListing ObjectMetadata PutObjectRequest S3Object S3ObjectSummary)
-   (com.amazonaws.services.s3.transfer TransferManager)
+   (com.amazonaws.auth AWSCredentials AWSStaticCredentialsProvider BasicAWSCredentials)
+   (com.amazonaws.services.s3 AmazonS3Client AmazonS3ClientBuilder)
+   (com.amazonaws.services.s3.model ObjectListing ObjectMetadata PutObjectRequest
+                                    Region
+                                    S3Object S3ObjectSummary)
+   (com.amazonaws.services.s3.transfer TransferManager TransferManagerBuilder)
    (java.io ByteArrayInputStream InputStream)
    (java.nio.charset StandardCharsets)
    ))
@@ -176,7 +178,7 @@
     ^String src-key
     ^String dst-bucket-name
     ^String dst-key]
-   (copy txfr-mgr src-bucket-name src-key dst-bucket-name dst-key false))
+   (copy! txfr-mgr src-bucket-name src-key dst-bucket-name dst-key false))
   ([^TransferManager txfr-mgr
     ^String src-bucket-name
     ^String src-key
@@ -258,7 +260,23 @@
    See:
      * http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/s3/transfer/TransferManager.html
   "
-  ([^clojure.lang.PersistentArrayMap creds] (startup (:access-key creds) (:secret-key creds)))
+  [^String access-key
+   ^String secret-key]
+  (let [cred-provider (AWSStaticCredentialsProvider. (BasicAWSCredentials. access-key secret-key))
+        client (-> (doto (AmazonS3ClientBuilder/standard)
+                     (.setRegion (.toString Region/US_Standard))
+                     (.setCredentials cred-provider))
+                   .build)
+        txfr-mgr (-> (doto (TransferManagerBuilder/standard) (.setS3Client client)) .build)]
+    txfr-mgr))
+
+(defn startup-deprecated
+  "Create a TransferManager instance which should be kept and reused in the application.
+   TransferManager is thread-safe.
+
+   See:
+     * http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/s3/transfer/TransferManager.html
+  "
   ([^String access-key
     ^String secret-key]
    (-> (BasicAWSCredentials. access-key secret-key)
