@@ -1,4 +1,4 @@
-(defproject org.jasani/clj-aws-s3 "0.1.0-SNAPSHOT"
+(defproject org.jasani/clj-aws-s3 "0.1.0"
   :description "Simple AWS S3 driver"
   :url "https://github.com/hiteshjasani/clj-aws-s3"
   :license {:name "Eclipse Public License"
