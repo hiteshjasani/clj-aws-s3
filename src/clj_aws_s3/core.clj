@@ -15,7 +15,9 @@
      (shutdown txfrmgr)
   "
   (:import
-   (com.amazonaws.auth AWSCredentials AWSStaticCredentialsProvider BasicAWSCredentials)
+   (com.amazonaws.auth AWSCredentials AWSCredentialsProvider
+                       AWSStaticCredentialsProvider
+                       BasicAWSCredentials DefaultAWSCredentialsProviderChain)
    (com.amazonaws.services.s3 AmazonS3Client AmazonS3ClientBuilder)
    (com.amazonaws.services.s3.model ObjectListing ObjectMetadata PutObjectRequest
                                     Region
@@ -253,6 +255,16 @@
    ^String object-key]
   (.deleteObject (get-client txfr-mgr-or-client) bucket-name object-key))
 
+(defn startup-impl
+  ""
+  [^AWSCredentialsProvider creds-provider]
+  (let [client (-> (doto (AmazonS3ClientBuilder/standard)
+                     (.setRegion (.toString Region/US_Standard))
+                     (.setCredentials creds-provider))
+                   .build)
+        txfr-mgr (-> (doto (TransferManagerBuilder/standard) (.setS3Client client)) .build)]
+    txfr-mgr))
+
 (defn startup
   "Create a TransferManager instance which should be kept and reused in the application.
    TransferManager is thread-safe.
@@ -260,15 +272,13 @@
    See:
      * http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/services/s3/transfer/TransferManager.html
   "
-  [^String access-key
-   ^String secret-key]
-  (let [cred-provider (AWSStaticCredentialsProvider. (BasicAWSCredentials. access-key secret-key))
-        client (-> (doto (AmazonS3ClientBuilder/standard)
-                     (.setRegion (.toString Region/US_Standard))
-                     (.setCredentials cred-provider))
-                   .build)
-        txfr-mgr (-> (doto (TransferManagerBuilder/standard) (.setS3Client client)) .build)]
-    txfr-mgr))
+  ([] (startup-impl (DefaultAWSCredentialsProviderChain/getInstance)))
+  ([^String access-key
+    ^String secret-key]
+   (let [creds-provider (AWSStaticCredentialsProvider.
+                         (BasicAWSCredentials. access-key secret-key))]
+     (startup-impl creds-provider)
+     )))
 
 (defn startup-deprecated
   "Create a TransferManager instance which should be kept and reused in the application.
